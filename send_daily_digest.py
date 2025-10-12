@@ -10,22 +10,20 @@ Example crontab entry (runs at 11:59 PM daily):
 
 import os
 import json
-import smtplib
 import glob
-from email.mime.text import MIMEText
-from email.mime.multipart import MIMEMultipart
 from datetime import datetime
 from dotenv import load_dotenv
+import requests
 
 # Load environment variables
 load_dotenv()
 
 # ==== EMAIL CONFIGURATION ====
 EMAIL_ADDRESS = os.environ.get("EMAIL_ADDRESS", "")
-EMAIL_PASSWORD = os.environ.get("EMAIL_PASSWORD", "")
-EMAIL_SMTP_SERVER = "mail.privateemail.com"
-EMAIL_SMTP_PORT = 587
+SMTP2GO_API_KEY = os.environ.get("SMTP2GO_API_KEY", "")
 NOTIFICATION_EMAIL = os.environ.get("NOTIFICATION_EMAIL", EMAIL_ADDRESS)
+SMTP2GO_API_URL = "https://api.smtp2go.com/v3/email/send"
+REPLY_TO = os.environ.get("REPLY_TO", EMAIL_ADDRESS)
 
 # ==== DISCORD COMMUNITY DETAILS ====
 DISCORD_INVITE_LINK = "https://discord.com/invite/yjaraMBuSG"
@@ -227,35 +225,54 @@ Generated on {datetime.now().strftime('%Y-%m-%d at %H:%M:%S')}
 
 def send_digest_email(leads, date_str):
     """Send the daily digest email"""
-    if not EMAIL_ADDRESS or not EMAIL_PASSWORD:
-        print("⚠️ Email credentials not configured")
+    if not EMAIL_ADDRESS or not SMTP2GO_API_KEY:
+        print("⚠️ SMTP2GO not configured: missing EMAIL_ADDRESS or SMTP2GO_API_KEY")
         return False
     
     try:
         # Generate email content
         html_content, text_content = generate_digest_email(leads)
         
-        # Create message
-        msg = MIMEMultipart('alternative')
-        msg['Subject'] = f'Daily Lead Digest - {datetime.now().strftime("%B %d, %Y")} ({len(leads)} leads)'
-        msg['From'] = EMAIL_ADDRESS
-        msg['To'] = NOTIFICATION_EMAIL
-        
-        # Attach both plain text and HTML versions
-        part1 = MIMEText(text_content, 'plain')
-        part2 = MIMEText(html_content, 'html')
-        
-        msg.attach(part1)
-        msg.attach(part2)
-        
-        # Connect to SMTP server and send
-        with smtplib.SMTP(EMAIL_SMTP_SERVER, EMAIL_SMTP_PORT) as server:
-            server.starttls()
-            server.login(EMAIL_ADDRESS, EMAIL_PASSWORD)
-            server.send_message(msg)
-        
-        print(f"✅ Daily digest email sent to {NOTIFICATION_EMAIL} ({len(leads)} leads)")
-        return True
+        # Prepare recipients list (supports comma or semicolon separated)
+        recipients = [r.strip() for r in NOTIFICATION_EMAIL.replace(';', ',').split(',') if r.strip()]
+        subject = f'Daily Lead Digest - {datetime.now().strftime("%B %d, %Y")} ({len(leads)} leads)'
+
+        payload = {
+            "sender": EMAIL_ADDRESS,
+            "to": recipients,
+            "subject": subject,
+            "text_body": text_content,
+            "html_body": html_content,
+            "custom_headers": [
+                {"header": "Reply-To", "value": REPLY_TO}
+            ],
+        }
+
+        headers = {
+            "Content-Type": "application/json",
+            "accept": "application/json",
+            "X-Smtp2go-Api-Key": SMTP2GO_API_KEY,
+        }
+
+        response = requests.post(SMTP2GO_API_URL, json=payload, headers=headers, timeout=20)
+
+        ok = False
+        if response.status_code == 200:
+            try:
+                resp_json = response.json()
+                # SMTP2GO typically returns { data: { succeeded: n, failed: m, ... } }
+                data_obj = resp_json.get("data") if isinstance(resp_json, dict) else None
+                if isinstance(data_obj, dict) and isinstance(data_obj.get("succeeded"), int):
+                    ok = data_obj.get("succeeded", 0) >= 1
+            except Exception:
+                ok = False
+
+        if ok:
+            print(f"✅ Daily digest email sent to {', '.join(recipients)} ({len(leads)} leads)")
+            return True
+        else:
+            print(f"⚠️ SMTP2GO send failed: status={response.status_code}, body={response.text}")
+            return False
         
     except Exception as e:
         print(f"⚠️ Error sending daily digest email: {e}")

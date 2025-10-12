@@ -41,13 +41,6 @@ REDDIT_PASSWORD = os.environ.get("REDDIT_PASSWORD", "YOUR_PASSWORD")  # For resp
 USER_AGENT = os.environ.get("USER_AGENT", "English Learning Community Bot v1.0")
 COHERE_API_KEY = os.environ.get("COHERE_API_KEY", "")  # For LLM verification
 
-# ==== EMAIL CONFIGURATION (Namecheap Private Email) ====
-EMAIL_ADDRESS = os.environ.get("EMAIL_ADDRESS", "")  # Your Namecheap email
-EMAIL_PASSWORD = os.environ.get("EMAIL_PASSWORD", "")  # Your email password
-EMAIL_SMTP_SERVER = "mail.privateemail.com"  # Namecheap Private Email SMTP
-EMAIL_SMTP_PORT = 587  # STARTTLS port
-NOTIFICATION_EMAIL = os.environ.get("NOTIFICATION_EMAIL", EMAIL_ADDRESS)  # Email to receive notifications
-
 # Discord community details
 DISCORD_INVITE_LINK = "https://discord.com/invite/yjaraMBuSG"  # Replace with your actual Discord invite
 COMMUNITY_NAME = "Practice Speaking English - Fluent Future"
@@ -61,7 +54,6 @@ TARGET_SUBREDDITS = [
 # ==== AUTO-RESPONSE SETTINGS ====
 AUTO_RESPOND = False  # Set to True to enable auto-responding
 SEND_DMS = False     # Set to True to enable direct messaging
-SEND_EMAILS = False   # Set to True to enable email notifications for leads
 RESPONSE_COOLDOWN_HOURS = 24  # Hours to wait before responding to same user again
 
 # Track recent interactions to avoid spam
@@ -486,7 +478,6 @@ print(f"🚀 Monitoring {len(TARGET_SUBREDDITS)} subreddits for English learning
 print(f"📍 Target subreddits: {', '.join(TARGET_SUBREDDITS)}")
 print(f"🤖 Auto-respond: {'ON' if AUTO_RESPOND else 'OFF'}")
 print(f"📩 Direct messages: {'ON' if SEND_DMS else 'OFF'}")
-print(f"📧 Email notifications: {'ON' if SEND_EMAILS else 'OFF'}")
 
 def process_content(content, content_type):
     """
@@ -748,7 +739,7 @@ try:
     
     print("🔄 Monitoring both posts and comments for English learning leads...")
     print("🧹 Memory cleanup running in background (hourly)")
-    print("💡 Tip: Set AUTO_RESPOND=True, SEND_DMS=True, or SEND_EMAILS=True to automatically engage with leads")
+    print("💡 Tip: Set AUTO_RESPOND=True, SEND_DMS=True to automatically engage with leads")
     
     # Process content from queue
     while True:

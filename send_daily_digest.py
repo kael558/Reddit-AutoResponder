@@ -27,6 +27,37 @@ EMAIL_SMTP_SERVER = "mail.privateemail.com"
 EMAIL_SMTP_PORT = 587
 NOTIFICATION_EMAIL = os.environ.get("NOTIFICATION_EMAIL", EMAIL_ADDRESS)
 
+# ==== DISCORD COMMUNITY DETAILS ====
+DISCORD_INVITE_LINK = "https://discord.com/invite/yjaraMBuSG"
+COMMUNITY_NAME = "Practice Speaking English - Fluent Future"
+
+# ==== RESPONSE TEMPLATES ====
+RESPONSE_TEMPLATES = {
+    "speaking_practice": f"""
+Hey 👋 saw your post about practicing spoken English! We're building an app to do exactly that and we'd love for you to join our friendly discord community to help each other: {DISCORD_INVITE_LINK}
+""",
+    
+    "learning_support": f"""
+Hey 👋 saw your post about English learning! I'm in the same boat and we're building a community to help each other out. Would love for you to join our discord: {DISCORD_INVITE_LINK}
+""",
+    
+    "general_invite": f"""
+Hey 👋 saw your post! We're building a friendly English learning community on discord where we practice and help each other. Would love for you to join us: {DISCORD_INVITE_LINK}
+"""
+}
+
+def get_response_template(text_content):
+    """Choose appropriate response template based on content"""
+    speaking_keywords = ['speaking', 'conversation', 'talk', 'practice speaking', 'oral', 'pronunciation']
+    support_keywords = ['struggling', 'difficult', 'hard', 'frustrated', 'give up', 'stuck', 'plateau']
+    
+    if any(keyword in text_content.lower() for keyword in speaking_keywords):
+        return RESPONSE_TEMPLATES["speaking_practice"]
+    elif any(keyword in text_content.lower() for keyword in support_keywords):
+        return RESPONSE_TEMPLATES["learning_support"]
+    else:
+        return RESPONSE_TEMPLATES["general_invite"]
+
 def generate_digest_email(leads):
     """Generate HTML email with all daily leads"""
     
@@ -35,7 +66,7 @@ def generate_digest_email(leads):
     # Generate lead cards HTML
     lead_cards_html = ""
     for idx, lead in enumerate(leads, 1):
-        username = lead.get('username', 'Unknown')
+        username = lead.get('author', 'Unknown')  # Changed from 'username' to 'author'
         subreddit = lead.get('subreddit', 'Unknown')
         content_type = lead.get('content_type', 'unknown')
         similarity_score = lead.get('similarity_score', 0)
@@ -43,24 +74,30 @@ def generate_digest_email(leads):
         reddit_score = lead.get('reddit_score', 0)
         timestamp = lead.get('timestamp', 'N/A')
         llm_verification = lead.get('llm_verification', 'N/A')
-        recommended_message = lead.get('recommended_message', '')
-        reddit_profile_url = lead.get('reddit_profile_url', '')
-        content_url = lead.get('content_url', '')
         
-        # Get content preview
-        content_data = lead.get('content_data', {})
+        # Generate URLs
+        reddit_profile_url = f"https://www.reddit.com/user/{username}"
+        content_url = lead.get('permalink', '')
+        
+        # Get content preview and generate recommended message
         if content_type == 'post':
-            title = content_data.get('title', 'N/A')
-            body = content_data.get('body', '')
+            title = lead.get('title', 'N/A')
+            body = lead.get('selftext', '')
             content_preview = f"""
                 <p><strong>Title:</strong> {title}</p>
                 <p><strong>Body:</strong> {body[:300]}{'...' if len(body) > 300 else ''}</p>
             """
+            # Generate recommended message based on content
+            text_content = f"{title} {body}".lower()
+            recommended_message = get_response_template(text_content)
         else:  # comment
-            comment = content_data.get('comment', '')
+            comment = lead.get('comment', '')
             content_preview = f"""
                 <p><strong>Comment:</strong> {comment[:300]}{'...' if len(comment) > 300 else ''}</p>
             """
+            # Generate recommended message based on content
+            text_content = comment.lower()
+            recommended_message = get_response_template(text_content)
         
         lead_cards_html += f"""
         <div style="background-color: white; padding: 20px; margin: 20px 0; border-radius: 5px; box-shadow: 0 2px 4px rgba(0,0,0,0.1); border-left: 4px solid #ff4500;">
@@ -147,20 +184,19 @@ Total Leads Today: {total_leads}
     
     if total_leads > 0:
         for idx, lead in enumerate(leads, 1):
-            username = lead.get('username', 'Unknown')
+            username = lead.get('author', 'Unknown')  # Changed from 'username' to 'author'
             subreddit = lead.get('subreddit', 'Unknown')
             content_type = lead.get('content_type', 'unknown')
             similarity_score = lead.get('similarity_score', 0)
-            reddit_profile_url = lead.get('reddit_profile_url', '')
-            content_url = lead.get('content_url', '')
+            reddit_profile_url = f"https://www.reddit.com/user/{username}"
+            content_url = lead.get('permalink', '')
             
-            content_data = lead.get('content_data', {})
             if content_type == 'post':
-                title = content_data.get('title', 'N/A')
-                body = content_data.get('body', '')[:200]
+                title = lead.get('title', 'N/A')
+                body = lead.get('selftext', '')[:200]
                 content_text = f"Title: {title}\nBody: {body}"
             else:
-                comment = content_data.get('comment', '')[:200]
+                comment = lead.get('comment', '')[:200]
                 content_text = f"Comment: {comment}"
             
             text_content += f"""
@@ -225,8 +261,8 @@ def send_digest_email(leads, date_str):
         print(f"⚠️ Error sending daily digest email: {e}")
         return False
 
-def archive_pending_file(filename):
-    """Move pending email file to archive"""
+def archive_leads_file(filename):
+    """Move leads file to archive"""
     try:
         archive_dir = "email_archives"
         os.makedirs(archive_dir, exist_ok=True)
@@ -249,17 +285,17 @@ def main():
     
     # Get today's date
     today = datetime.now().strftime("%Y-%m-%d")
-    pending_file = f"pending_emails_{today}.json"
+    leads_file = f"english_leads_{today}.json"
     
-    # Check if pending file exists
-    if not os.path.exists(pending_file):
-        print(f"ℹ️ No pending email file found for {today}")
+    # Check if leads file exists
+    if not os.path.exists(leads_file):
+        print(f"ℹ️ No leads file found for {today}")
         print("ℹ️ No leads to send today")
         
-        # Also check for any older pending files
-        older_files = glob.glob("pending_emails_*.json")
+        # Also check for any older leads files
+        older_files = glob.glob("english_leads_*.json")
         if older_files:
-            print(f"\n⚠️ Found {len(older_files)} older pending file(s):")
+            print(f"\n⚠️ Found {len(older_files)} older leads file(s):")
             for old_file in older_files:
                 print(f"   - {old_file}")
                 try:
@@ -267,29 +303,29 @@ def main():
                         old_leads = json.load(f)
                     
                     # Extract date from filename
-                    old_date = old_file.replace('pending_emails_', '').replace('.json', '')
+                    old_date = old_file.replace('english_leads_', '').replace('.json', '')
                     
                     print(f"\n📧 Sending digest for {old_date} ({len(old_leads)} leads)...")
                     if send_digest_email(old_leads, old_date):
-                        archive_pending_file(old_file)
+                        archive_leads_file(old_file)
                 except Exception as e:
                     print(f"⚠️ Error processing {old_file}: {e}")
         
         return
     
     try:
-        # Load pending emails
-        with open(pending_file, 'r', encoding='utf-8') as f:
+        # Load leads
+        with open(leads_file, 'r', encoding='utf-8') as f:
             leads = json.load(f)
         
         print(f"📊 Found {len(leads)} lead(s) for {today}")
         
         # Send digest email
         if send_digest_email(leads, today):
-            # Archive the pending file
-            archive_pending_file(pending_file)
+            # Archive the leads file
+            archive_leads_file(leads_file)
         else:
-            print("⚠️ Failed to send digest email. Pending file will be kept for retry.")
+            print("⚠️ Failed to send digest email. Leads file will be kept for retry.")
         
     except Exception as e:
         print(f"⚠️ Error: {e}")

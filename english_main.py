@@ -351,73 +351,6 @@ def cleanup_memory():
         except Exception as e:
             print(f"⚠️ Error during memory cleanup: {e}")
 
-# ==== EMAIL NOTIFICATION FUNCTION ====
-def save_email_notification_data(lead_data, content, content_type, text_content):
-    """Save email notification data to pending file for daily digest"""
-    try:
-        username = str(content.author)
-        subreddit_name = content.subreddit.display_name
-        
-        # Get the recommended response template
-        recommended_message = get_response_template(text_content)
-        
-        # Create Reddit profile link
-        reddit_profile_url = f"https://www.reddit.com/user/{username}"
-        
-        # Create permalink to content
-        content_url = f"https://www.reddit.com{content.permalink}"
-        
-        # Build email data structure
-        if content_type == 'post':
-            content_data = {
-                'title': content.title,
-                'body': content.selftext
-            }
-        else:  # comment
-            content_data = {
-                'comment': content.body
-            }
-        
-        email_data = {
-            'username': username,
-            'subreddit': subreddit_name,
-            'content_type': content_type,
-            'reddit_score': content.score,
-            'similarity_score': lead_data.get('similarity_score', 0),
-            'best_matching_topic': lead_data.get('best_matching_topic', 'N/A'),
-            'content_data': content_data,
-            'recommended_message': recommended_message,
-            'reddit_profile_url': reddit_profile_url,
-            'content_url': content_url,
-            'llm_verification': lead_data.get('llm_verification', 'N/A'),
-            'timestamp': lead_data.get('timestamp', datetime.now().isoformat())
-        }
-        
-        # Save to daily pending emails file
-        today = datetime.now().strftime("%Y-%m-%d")
-        filename = f"pending_emails_{today}.json"
-        
-        # Load existing data or create new list
-        if os.path.exists(filename):
-            with open(filename, 'r', encoding='utf-8') as f:
-                pending_emails = json.load(f)
-        else:
-            pending_emails = []
-        
-        # Add new email data
-        pending_emails.append(email_data)
-        
-        # Save back to file
-        with open(filename, 'w', encoding='utf-8') as f:
-            json.dump(pending_emails, f, indent=2, ensure_ascii=False)
-        
-        print(f"💾 Email data saved to {filename} for daily digest")
-        return True
-        
-    except Exception as e:
-        print(f"⚠️ Error saving email notification data: {e}")
-        return False
-
 # ==== RESPONSE FUNCTIONS ====
 def respond_to_content(reddit_instance, content, content_type, text_content):
     """Respond to relevant content (comment or DM)"""
@@ -761,12 +694,8 @@ def process_content(content, content_type):
         print(f"🎯 Best Matching Topic: {best_matching_topic}")
         print(f"📊 Reddit Score: {content.score}")
         
-        # Save email notification data if enabled
-        if SEND_EMAILS:
-            email_saved = save_email_notification_data(lead_data, content, content_type, text_content)
-            lead_data['email_saved'] = email_saved
-            if email_saved:
-                print("✅ Email data saved for daily digest!")
+        # Note: Lead will be saved to english_leads_{today}.json below
+        # Email digest script reads directly from that file
         
         # Try to respond if enabled
         if (AUTO_RESPOND or SEND_DMS) and reddit_write:

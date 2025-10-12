@@ -242,3 +242,8 @@ ngrok.exe
 
 .idea/
 *.json
+
+# Allow email archive directory to be tracked (but not its contents)
+!email_archives/
+email_archives/*
+!email_archives/.gitkeep

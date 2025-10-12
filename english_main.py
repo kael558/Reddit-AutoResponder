@@ -352,12 +352,8 @@ def cleanup_memory():
             print(f"⚠️ Error during memory cleanup: {e}")
 
 # ==== EMAIL NOTIFICATION FUNCTION ====
-def send_email_notification(lead_data, content, content_type, text_content):
-    """Send email notification about a new lead"""
-    if not EMAIL_ADDRESS or not EMAIL_PASSWORD:
-        print("⚠️ Email credentials not configured")
-        return False
-    
+def save_email_notification_data(lead_data, content, content_type, text_content):
+    """Save email notification data to pending file for daily digest"""
     try:
         username = str(content.author)
         subreddit_name = content.subreddit.display_name
@@ -371,117 +367,55 @@ def send_email_notification(lead_data, content, content_type, text_content):
         # Create permalink to content
         content_url = f"https://www.reddit.com{content.permalink}"
         
-        # Build email content
+        # Build email data structure
         if content_type == 'post':
-            content_preview = f"""
-<strong>Title:</strong> {content.title}<br>
-<strong>Body:</strong> {content.selftext[:500]}{'...' if len(content.selftext) > 500 else ''}
-"""
+            content_data = {
+                'title': content.title,
+                'body': content.selftext
+            }
         else:  # comment
-            content_preview = f"""
-<strong>Comment:</strong> {content.body[:500]}{'...' if len(content.body) > 500 else ''}
-"""
+            content_data = {
+                'comment': content.body
+            }
         
-        # Create HTML email
-        html_content = f"""
-<html>
-<head></head>
-<body style="font-family: Arial, sans-serif; line-height: 1.6; color: #333;">
-    <div style="max-width: 600px; margin: 0 auto; padding: 20px; background-color: #f5f5f5;">
-        <h2 style="color: #ff4500; border-bottom: 2px solid #ff4500; padding-bottom: 10px;">
-            🎯 New Reddit Lead - Fluent Future
-        </h2>
+        email_data = {
+            'username': username,
+            'subreddit': subreddit_name,
+            'content_type': content_type,
+            'reddit_score': content.score,
+            'similarity_score': lead_data.get('similarity_score', 0),
+            'best_matching_topic': lead_data.get('best_matching_topic', 'N/A'),
+            'content_data': content_data,
+            'recommended_message': recommended_message,
+            'reddit_profile_url': reddit_profile_url,
+            'content_url': content_url,
+            'llm_verification': lead_data.get('llm_verification', 'N/A'),
+            'timestamp': lead_data.get('timestamp', datetime.now().isoformat())
+        }
         
-        <div style="background-color: white; padding: 20px; margin: 20px 0; border-radius: 5px; box-shadow: 0 2px 4px rgba(0,0,0,0.1);">
-            <h3 style="color: #1a73e8; margin-top: 0;">Lead Information</h3>
-            <p><strong>Username:</strong> u/{username}</p>
-            <p><strong>Subreddit:</strong> r/{subreddit_name}</p>
-            <p><strong>Content Type:</strong> {content_type.upper()}</p>
-            <p><strong>Reddit Score:</strong> {content.score}</p>
-            <p><strong>Similarity Score:</strong> {lead_data.get('similarity_score', 0):.2f}</p>
-            <p><strong>Matching Topic:</strong> {lead_data.get('best_matching_topic', 'N/A')}</p>
-        </div>
+        # Save to daily pending emails file
+        today = datetime.now().strftime("%Y-%m-%d")
+        filename = f"pending_emails_{today}.json"
         
-        <div style="background-color: white; padding: 20px; margin: 20px 0; border-radius: 5px; box-shadow: 0 2px 4px rgba(0,0,0,0.1);">
-            <h3 style="color: #1a73e8; margin-top: 0;">Content Preview</h3>
-            {content_preview}
-        </div>
+        # Load existing data or create new list
+        if os.path.exists(filename):
+            with open(filename, 'r', encoding='utf-8') as f:
+                pending_emails = json.load(f)
+        else:
+            pending_emails = []
         
-        <div style="background-color: white; padding: 20px; margin: 20px 0; border-radius: 5px; box-shadow: 0 2px 4px rgba(0,0,0,0.1);">
-            <h3 style="color: #1a73e8; margin-top: 0;">Recommended Message</h3>
-            <p style="background-color: #f0f0f0; padding: 15px; border-left: 4px solid #ff4500; white-space: pre-wrap;">{recommended_message}</p>
-        </div>
+        # Add new email data
+        pending_emails.append(email_data)
         
-        <div style="margin: 30px 0; text-align: center;">
-            <a href="{reddit_profile_url}" style="display: inline-block; padding: 12px 30px; background-color: #ff4500; color: white; text-decoration: none; border-radius: 5px; font-weight: bold; margin: 5px;">
-                📧 DM User on Reddit
-            </a>
-            <a href="{content_url}" style="display: inline-block; padding: 12px 30px; background-color: #1a73e8; color: white; text-decoration: none; border-radius: 5px; font-weight: bold; margin: 5px;">
-                🔗 View Original Post
-            </a>
-        </div>
+        # Save back to file
+        with open(filename, 'w', encoding='utf-8') as f:
+            json.dump(pending_emails, f, indent=2, ensure_ascii=False)
         
-        <div style="margin-top: 30px; padding-top: 20px; border-top: 1px solid #ddd; font-size: 12px; color: #666;">
-            <p><strong>LLM Verification:</strong> {lead_data.get('llm_verification', 'N/A')}</p>
-            <p><strong>Timestamp:</strong> {lead_data.get('timestamp', 'N/A')}</p>
-        </div>
-    </div>
-</body>
-</html>
-"""
-        
-        # Create plain text version as fallback
-        text_content_email = f"""
-New Reddit Lead - Fluent Future
-
-=== LEAD INFORMATION ===
-Username: u/{username}
-Subreddit: r/{subreddit_name}
-Content Type: {content_type.upper()}
-Reddit Score: {content.score}
-Similarity Score: {lead_data.get('similarity_score', 0):.2f}
-Matching Topic: {lead_data.get('best_matching_topic', 'N/A')}
-
-=== CONTENT PREVIEW ===
-{'Title: ' + content.title if content_type == 'post' else ''}
-{'Body: ' + content.selftext[:500] if content_type == 'post' else 'Comment: ' + content.body[:500]}
-
-=== RECOMMENDED MESSAGE ===
-{recommended_message}
-
-=== LINKS ===
-DM User: {reddit_profile_url}
-View Content: {content_url}
-
-=== ADDITIONAL INFO ===
-LLM Verification: {lead_data.get('llm_verification', 'N/A')}
-Timestamp: {lead_data.get('timestamp', 'N/A')}
-"""
-        
-        # Create message
-        msg = MIMEMultipart('alternative')
-        msg['Subject'] = 'New Reddit Lead - Fluent Future'
-        msg['From'] = EMAIL_ADDRESS
-        msg['To'] = NOTIFICATION_EMAIL
-        
-        # Attach both plain text and HTML versions
-        part1 = MIMEText(text_content_email, 'plain')
-        part2 = MIMEText(html_content, 'html')
-        
-        msg.attach(part1)
-        msg.attach(part2)
-        
-        # Connect to SMTP server and send
-        with smtplib.SMTP(EMAIL_SMTP_SERVER, EMAIL_SMTP_PORT) as server:
-            server.starttls()
-            server.login(EMAIL_ADDRESS, EMAIL_PASSWORD)
-            server.send_message(msg)
-        
-        print(f"📧 Email notification sent to {NOTIFICATION_EMAIL}")
+        print(f"💾 Email data saved to {filename} for daily digest")
         return True
         
     except Exception as e:
-        print(f"⚠️ Error sending email notification: {e}")
+        print(f"⚠️ Error saving email notification data: {e}")
         return False
 
 # ==== RESPONSE FUNCTIONS ====
@@ -827,12 +761,12 @@ def process_content(content, content_type):
         print(f"🎯 Best Matching Topic: {best_matching_topic}")
         print(f"📊 Reddit Score: {content.score}")
         
-        # Send email notification if enabled
+        # Save email notification data if enabled
         if SEND_EMAILS:
-            email_sent = send_email_notification(lead_data, content, content_type, text_content)
-            lead_data['email_sent'] = email_sent
-            if email_sent:
-                print("✅ Email notification sent!")
+            email_saved = save_email_notification_data(lead_data, content, content_type, text_content)
+            lead_data['email_saved'] = email_saved
+            if email_saved:
+                print("✅ Email data saved for daily digest!")
         
         # Try to respond if enabled
         if (AUTO_RESPOND or SEND_DMS) and reddit_write:

@@ -61,7 +61,7 @@ TARGET_SUBREDDITS = [
 # ==== AUTO-RESPONSE SETTINGS ====
 AUTO_RESPOND = False  # Set to True to enable auto-responding
 SEND_DMS = False     # Set to True to enable direct messaging
-SEND_EMAILS = True   # Set to True to enable email notifications for leads
+SEND_EMAILS = False   # Set to True to enable email notifications for leads
 RESPONSE_COOLDOWN_HOURS = 24  # Hours to wait before responding to same user again
 
 # Track recent interactions to avoid spam

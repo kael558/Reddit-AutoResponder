@@ -53,8 +53,11 @@ This sends the digest at the end of each day:
 # Open crontab editor
 crontab -e
 
-# Add this line (adjust path to your actual path):
-59 23 * * * cd /root/Reddit-AutoResponder && /usr/bin/python3 send_daily_digest.py >> digest_log.txt 2>&1
+# Method 1: Activate venv then run script (recommended)
+59 23 * * * cd /root/Reddit-AutoResponder && source venv/bin/activate && python3 send_daily_digest.py >> digest_log.txt 2>&1
+
+# Method 2: Use venv's Python directly (alternative)
+# 59 23 * * * cd /root/Reddit-AutoResponder && /root/Reddit-AutoResponder/venv/bin/python3 send_daily_digest.py >> digest_log.txt 2>&1
 ```
 
 #### Option B: Daily Digest at 8:00 AM
@@ -62,7 +65,11 @@ crontab -e
 This sends the previous day's digest in the morning:
 
 ```bash
-0 8 * * * cd /path/to/AutoResponder && /usr/bin/python3 send_daily_digest.py >> digest_log.txt 2>&1
+# Method 1: With venv activation
+0 8 * * * cd /root/Reddit-AutoResponder && source venv/bin/activate && python3 send_daily_digest.py >> digest_log.txt 2>&1
+
+# Method 2: Direct venv Python path
+# 0 8 * * * cd /root/Reddit-AutoResponder && /root/Reddit-AutoResponder/venv/bin/python3 send_daily_digest.py >> digest_log.txt 2>&1
 ```
 
 #### Verify Cron Job
@@ -167,9 +174,22 @@ chmod +x send_daily_digest.py
 ls -lh send_daily_digest.py
 ```
 
-### Python Not Found
+### Python Not Found or Import Errors
 
-Find the correct Python path:
+If you're using a virtual environment, you need to activate it in the cron job:
+
+```bash
+# Find your venv's Python path
+ls /root/Reddit-AutoResponder/venv/bin/python3
+
+# Option 1: Activate venv in cron (recommended)
+59 23 * * * cd /root/Reddit-AutoResponder && source venv/bin/activate && python3 send_daily_digest.py >> digest_log.txt 2>&1
+
+# Option 2: Use full path to venv Python
+59 23 * * * cd /root/Reddit-AutoResponder && /root/Reddit-AutoResponder/venv/bin/python3 send_daily_digest.py >> digest_log.txt 2>&1
+```
+
+Find your system Python path (if not using venv):
 
 ```bash
 which python3
@@ -201,11 +221,11 @@ Edit the cron schedule in `crontab -e`. Use [crontab.guru](https://crontab.guru)
 Add multiple cron entries:
 
 ```bash
-# Morning digest (9 AM)
-0 9 * * * cd /path/to/AutoResponder && /usr/bin/python3 send_daily_digest.py >> digest_log.txt 2>&1
+# Morning digest (9 AM) - with venv activation
+0 9 * * * cd /root/Reddit-AutoResponder && source venv/bin/activate && python3 send_daily_digest.py >> digest_log.txt 2>&1
 
-# Evening digest (9 PM)
-0 21 * * * cd /path/to/AutoResponder && /usr/bin/python3 send_daily_digest.py >> digest_log.txt 2>&1
+# Evening digest (9 PM) - with venv activation
+0 21 * * * cd /root/Reddit-AutoResponder && source venv/bin/activate && python3 send_daily_digest.py >> digest_log.txt 2>&1
 ```
 
 ### Clean Up Old Archives
@@ -214,7 +234,7 @@ Add a monthly cleanup task:
 
 ```bash
 # Delete archives older than 90 days on the 1st of each month at 3 AM
-0 3 1 * * find /path/to/AutoResponder/email_archives -name "pending_emails_*.json" -mtime +90 -delete
+0 3 1 * * find /root/Reddit-AutoResponder/email_archives -name "pending_emails_*.json" -mtime +90 -delete
 ```
 
 ## Switching Back to Individual Emails

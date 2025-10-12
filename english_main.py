@@ -491,7 +491,7 @@ def save_lead_to_json(lead_data):
 def save_filtered_content_to_json(filtered_data):
     """
     Save filtered content data to a daily JSON file
-    """'
+    """
     if not SAVE_FILTERED_CONTENT:
         return
     today = datetime.now().strftime("%Y-%m-%d")

@@ -54,7 +54,7 @@ This sends the digest at the end of each day:
 crontab -e
 
 # Add this line (adjust path to your actual path):
-59 23 * * * cd /path/to/AutoResponder && /usr/bin/python3 send_daily_digest.py >> digest_log.txt 2>&1
+59 23 * * * cd /root/Reddit-AutoResponder && /usr/bin/python3 send_daily_digest.py >> digest_log.txt 2>&1
 ```
 
 #### Option B: Daily Digest at 8:00 AM

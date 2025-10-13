@@ -14,6 +14,7 @@ import glob
 from datetime import datetime
 from dotenv import load_dotenv
 import requests
+import argparse
 
 # Load environment variables
 load_dotenv()
@@ -56,10 +57,16 @@ def get_response_template(text_content):
     else:
         return RESPONSE_TEMPLATES["general_invite"]
 
-def generate_digest_email(leads):
+def generate_digest_email(leads, digest_date_str=None):
     """Generate HTML email with all daily leads"""
     
     total_leads = len(leads)
+    
+    # Determine display date for digest (defaults to now if not provided or invalid)
+    try:
+        display_date = datetime.strptime(digest_date_str, '%Y-%m-%d') if digest_date_str else datetime.now()
+    except Exception:
+        display_date = datetime.now()
     
     # Generate lead cards HTML
     lead_cards_html = ""
@@ -147,7 +154,7 @@ def generate_digest_email(leads):
         <div style="background-color: #ff4500; color: white; padding: 30px; border-radius: 10px 10px 0 0; text-align: center;">
             <h1 style="margin: 0; font-size: 32px;">📊 Daily Lead Digest</h1>
             <p style="margin: 10px 0 0 0; font-size: 18px;">Fluent Future - English Learning Leads</p>
-            <p style="margin: 10px 0 0 0; font-size: 16px; opacity: 0.9;">{datetime.now().strftime('%A, %B %d, %Y')}</p>
+            <p style="margin: 10px 0 0 0; font-size: 16px; opacity: 0.9;">{display_date.strftime('%A, %B %d, %Y')}</p>
         </div>
         
         <div style="background-color: white; padding: 30px; border-radius: 0 0 10px 10px; box-shadow: 0 4px 6px rgba(0,0,0,0.1);">
@@ -171,7 +178,7 @@ def generate_digest_email(leads):
     # Create plain text version
     text_content = f"""
 Daily Lead Digest - Fluent Future
-{datetime.now().strftime('%A, %B %d, %Y')}
+{display_date.strftime('%A, %B %d, %Y')}
 
 {'='*60}
 SUMMARY
@@ -231,11 +238,15 @@ def send_digest_email(leads, date_str):
     
     try:
         # Generate email content
-        html_content, text_content = generate_digest_email(leads)
+        html_content, text_content = generate_digest_email(leads, date_str)
         
         # Prepare recipients list (supports comma or semicolon separated)
         recipients = [r.strip() for r in NOTIFICATION_EMAIL.replace(';', ',').split(',') if r.strip()]
-        subject = f'Daily Lead Digest - {datetime.now().strftime("%B %d, %Y")} ({len(leads)} leads)'
+        try:
+            nice_date = datetime.strptime(date_str, "%Y-%m-%d").strftime("%B %d, %Y") if date_str else datetime.now().strftime("%B %d, %Y")
+        except Exception:
+            nice_date = date_str or datetime.now().strftime("%B %d, %Y")
+        subject = f'Daily Lead Digest - {nice_date} ({len(leads)} leads)'
 
         payload = {
             "sender": EMAIL_ADDRESS,
@@ -278,6 +289,12 @@ def send_digest_email(leads, date_str):
         print(f"⚠️ Error sending daily digest email: {e}")
         return False
 
+def parse_args():
+    """Parse CLI arguments."""
+    parser = argparse.ArgumentParser(description="Daily Digest Email Sender")
+    parser.add_argument("-d", "--date", help="Date to send digest for (YYYY-MM-DD)")
+    return parser.parse_args()
+
 def archive_leads_file(filename):
     """Move leads file to archive"""
     try:
@@ -300,45 +317,61 @@ def main():
     print(f"🕐 Time: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
     print("="*60)
     
-    # Get today's date
-    today = datetime.now().strftime("%Y-%m-%d")
-    leads_file = f"english_leads_{today}.json"
+    # Parse CLI args and resolve target date
+    args = parse_args()
+    if args.date:
+        try:
+            # Validate date format
+            datetime.strptime(args.date, "%Y-%m-%d")
+            target_date = args.date
+        except Exception:
+            print(f"⚠️ Invalid date format for --date: {args.date}. Expected YYYY-MM-DD.")
+            return
+    else:
+        target_date = datetime.now().strftime("%Y-%m-%d")
+
+    leads_file = f"english_leads_{target_date}.json"
     
     # Check if leads file exists
     if not os.path.exists(leads_file):
-        print(f"ℹ️ No leads file found for {today}")
-        print("ℹ️ No leads to send today")
-        
-        # Also check for any older leads files
-        older_files = glob.glob("english_leads_*.json")
-        if older_files:
-            print(f"\n⚠️ Found {len(older_files)} older leads file(s):")
-            for old_file in older_files:
-                print(f"   - {old_file}")
-                try:
-                    with open(old_file, 'r', encoding='utf-8') as f:
-                        old_leads = json.load(f)
-                    
-                    # Extract date from filename
-                    old_date = old_file.replace('english_leads_', '').replace('.json', '')
-                    
-                    print(f"\n📧 Sending digest for {old_date} ({len(old_leads)} leads)...")
-                    if send_digest_email(old_leads, old_date):
-                        archive_leads_file(old_file)
-                except Exception as e:
-                    print(f"⚠️ Error processing {old_file}: {e}")
-        
-        return
+        if args.date:
+            print(f"ℹ️ No leads file found for {target_date}")
+            print("ℹ️ No leads to send for the specified date")
+            return
+        else:
+            print(f"ℹ️ No leads file found for {target_date}")
+            print("ℹ️ No leads to send today")
+            
+            # Also check for any older leads files
+            older_files = glob.glob("english_leads_*.json")
+            if older_files:
+                print(f"\n⚠️ Found {len(older_files)} older leads file(s):")
+                for old_file in older_files:
+                    print(f"   - {old_file}")
+                    try:
+                        with open(old_file, 'r', encoding='utf-8') as f:
+                            old_leads = json.load(f)
+                        
+                        # Extract date from filename
+                        old_date = old_file.replace('english_leads_', '').replace('.json', '')
+                        
+                        print(f"\n📧 Sending digest for {old_date} ({len(old_leads)} leads)...")
+                        if send_digest_email(old_leads, old_date):
+                            archive_leads_file(old_file)
+                    except Exception as e:
+                        print(f"⚠️ Error processing {old_file}: {e}")
+            
+            return
     
     try:
         # Load leads
         with open(leads_file, 'r', encoding='utf-8') as f:
             leads = json.load(f)
         
-        print(f"📊 Found {len(leads)} lead(s) for {today}")
+        print(f"📊 Found {len(leads)} lead(s) for {target_date}")
         
         # Send digest email
-        if send_digest_email(leads, today):
+        if send_digest_email(leads, target_date):
             # Archive the leads file
             archive_leads_file(leads_file)
         else:

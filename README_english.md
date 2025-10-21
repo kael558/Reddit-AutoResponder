@@ -1,6 +1,9 @@
 # English Learning Lead Monitor 🎯
 
 This Python script monitors Reddit for users learning English and can automatically invite them to join your Discord community for speaking practice.
+nohup python3 -u english_main.py >> log.txt 2>&1 &
+
+59 23 \* \* \* cd /root/Reddit-AutoResponder && source venv/bin/activate && /root/Reddit-AutoResponder/venv/bin/python3 send_daily_digest.py >> digest_log.txt 2>&1
 
 ## Features
 

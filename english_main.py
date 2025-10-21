@@ -20,6 +20,20 @@ processed_count = 0
 milestones = [10, 100, 1000]  # Base 10 exponential until 1000
 next_milestone_index = 0
 
+# Detailed counters
+posts_processed = 0
+comments_processed = 0
+filtered_no_practice_keywords_count = 0
+filtered_negative_keywords_count = 0
+filtered_no_seeking_language_count = 0
+filtered_low_similarity_count = 0
+filtered_llm_failed_count = 0
+leads_found_count = 0
+replies_sent_count = 0
+dms_sent_count = 0
+errors_processing_count = 0
+errors_responding_count = 0
+
 def should_print_milestone(count):
     """Check if we should print a milestone for the current count"""
     global next_milestone_index
@@ -28,10 +42,32 @@ def should_print_milestone(count):
         if count >= milestones[next_milestone_index]:
             next_milestone_index += 1
             return True
-    elif count >= 1000 and count % 1000 == 0:
-        # Every 1000 after 1000
+    elif count >= 1000 and count % 10000 == 0:
+        # Every 10000 after 1000
         return True
     return False
+
+def print_progress_summary(context_label):
+    """Print a compact numeric summary of current progress"""
+    filtered_total = (
+        filtered_no_practice_keywords_count
+        + filtered_negative_keywords_count
+        + filtered_no_seeking_language_count
+        + filtered_low_similarity_count
+        + filtered_llm_failed_count
+    )
+    print(
+        f"📈 {context_label} | checked={processed_count} "
+        f"(posts={posts_processed}, comments={comments_processed}) | "
+        f"filtered={filtered_total} "
+        f"(no_practice={filtered_no_practice_keywords_count}, "
+        f"negative={filtered_negative_keywords_count}, "
+        f"no_seek={filtered_no_seeking_language_count}, "
+        f"low_sim={filtered_low_similarity_count}, "
+        f"llm_fail={filtered_llm_failed_count}) | "
+        f"leads={leads_found_count} | replies={replies_sent_count} | dms={dms_sent_count} | "
+        f"errors(proc={errors_processing_count}, resp={errors_responding_count})"
+    )
 
 # ==== CONFIGURE YOUR CREDENTIALS HERE ====
 REDDIT_CLIENT_ID = os.environ["REDDIT_CLIENT_ID"]
@@ -347,6 +383,7 @@ def cleanup_memory():
 def respond_to_content(reddit_instance, content, content_type, text_content):
     """Respond to relevant content (comment or DM)"""
     try:
+        global replies_sent_count, dms_sent_count, errors_responding_count
         username = str(content.author)
         
         if not can_interact_with_user(username):
@@ -360,6 +397,7 @@ def respond_to_content(reddit_instance, content, content_type, text_content):
             content.reply(response_text)
             print(f"✅ Replied to post by u/{username}")
             record_interaction(username)
+            replies_sent_count += 1
             return True
             
         elif AUTO_RESPOND and content_type == 'comment':
@@ -367,6 +405,7 @@ def respond_to_content(reddit_instance, content, content_type, text_content):
             content.reply(response_text)
             print(f"✅ Replied to comment by u/{username}")
             record_interaction(username)
+            replies_sent_count += 1
             return True
             
         elif SEND_DMS:
@@ -377,10 +416,12 @@ def respond_to_content(reddit_instance, content, content_type, text_content):
             )"""
             print(f"📩 Sent DM to u/{username}")
             record_interaction(username)
+            dms_sent_count += 1
             return True
             
     except Exception as e:
         print(f"⚠️ Error responding to u/{content.author}: {e}")
+        errors_responding_count += 1
         return False
     
     return False
@@ -483,11 +524,18 @@ def process_content(content, content_type):
     """
     Process either a post or comment and check if it's a relevant English learning lead
     """
-    global processed_count
+    global processed_count, posts_processed, comments_processed
+    global filtered_no_practice_keywords_count, filtered_negative_keywords_count
+    global filtered_no_seeking_language_count, filtered_low_similarity_count
+    global filtered_llm_failed_count, leads_found_count, errors_processing_count
     processed_count += 1
+    if content_type == 'post':
+        posts_processed += 1
+    else:
+        comments_processed += 1
 
     if should_print_milestone(processed_count):
-        print(f"Processed {processed_count} items...")
+        print_progress_summary("Milestone")
 
     try:
         # Skip deleted/removed content
@@ -573,6 +621,7 @@ def process_content(content, content_type):
                 'filter_description': 'Content does not contain practice-seeking keywords'
             })
             save_filtered_content_to_json(filtered_data)
+            filtered_no_practice_keywords_count += 1
             return
         
         # Negative keyword filtering - exclude irrelevant content
@@ -607,6 +656,7 @@ def process_content(content, content_type):
                 'filter_description': f'Content contains negative keywords: {", ".join(matching_negative_keywords)}'
             })
             save_filtered_content_to_json(filtered_data)
+            filtered_negative_keywords_count += 1
             return
         
         # Additional check: Must contain seeking/question language for first person
@@ -614,7 +664,7 @@ def process_content(content, content_type):
             'i need', 'i want', 'i am looking', 'i\'m looking', 'looking for',
             'how can i', 'where can i', 'how do i', 'where do i', 'help me',
             'anyone know', 'does anyone', 'can someone', 'recommendations for',
-            'suggestions for', 'advice on', 'tips for'
+            'suggestions for', 'advice on', 'tips for', 'seeking'
         ]
         
         has_seeking_language = any(indicator in text_content for indicator in seeking_indicators)
@@ -627,6 +677,7 @@ def process_content(content, content_type):
                 'filter_description': 'Content does not contain seeking/question language indicators'
             })
             save_filtered_content_to_json(filtered_data)
+            filtered_no_seeking_language_count += 1
             return
         
         # Embedding-based filtering
@@ -638,6 +689,7 @@ def process_content(content, content_type):
                 'filter_description': f'Similarity score ({similarity_score:.2f}) below threshold'
             })
             save_filtered_content_to_json(filtered_data)
+            filtered_low_similarity_count += 1
             return
         
         # Final LLM verification using Cohere
@@ -652,6 +704,7 @@ def process_content(content, content_type):
                 'filter_description': f'LLM verification: {llm_reasoning}'
             })
             save_filtered_content_to_json(filtered_data)
+            filtered_llm_failed_count += 1
             return
         
         print(f"🔍 Found potential English learning lead in {content_type}: {display_text}")
@@ -697,11 +750,14 @@ def process_content(content, content_type):
         
         print("===========================\n")
         
+        leads_found_count += 1
+
         # Save to JSON
         save_lead_to_json(lead_data)
         
     except Exception as e:
         print(f"⚠️ Error processing {content_type}: {e}")
+        errors_processing_count += 1
 
 try:
     import threading
@@ -751,6 +807,7 @@ try:
             # Periodic garbage collection every 100 items
             if processed_count % 100 == 0:
                 gc.collect()
+                print_progress_summary("Every 100")
             
             time.sleep(2)  # Rate limiting (slightly slower for politeness)
         except queue.Empty:

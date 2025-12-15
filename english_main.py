@@ -176,7 +176,42 @@ TARGET_TOPICS = [
     "casual English conversation practice",
     "IELTS speaking practice partner",
     "TOEFL speaking practice",
-    "English job interview practice"
+    "English job interview practice",
+    
+    # App and resource seeking
+    "what apps for learning English",
+    "best apps for English learning",
+    "recommend English learning apps",
+    "which app to learn English",
+    "good apps for practicing English",
+    "free apps for English",
+    "apps to improve English",
+    "best website for learning English",
+    "online resources for English",
+    "English learning platforms",
+    
+    # Tips and advice seeking
+    "how to learn English effectively",
+    "tips for learning English",
+    "advice for improving English",
+    "how to get better at English",
+    "struggling to learn English",
+    "need help learning English",
+    "how should I learn English",
+    "what's the best way to learn English",
+    "tips for English learners",
+    "advice for English practice",
+    
+    # General help and guidance
+    "need help with English",
+    "struggling with English learning",
+    "how to improve my English",
+    "want to get fluent in English",
+    "need guidance for English learning",
+    "looking for English learning methods",
+    "how can I become fluent",
+    "stuck in English learning",
+    "English learning journey help"
 ]
 
 # Pre-compute embeddings for target topics using Cohere
@@ -234,7 +269,7 @@ def verify_with_llm(text_content):
         return True, "LLM verification skipped (no API key)"
     
     try:
-        prompt = f"""Analyze the following Reddit post or comment and determine if it's from someone who is actively looking to improve their English or practice speaking English or seeking English conversation practice.
+        prompt = f"""Analyze the following Reddit post or comment and determine if it's from someone who is actively looking to improve their English or practice speaking English or seeking English conversation practice or asking for apps/resources/tips for learning English.
 
 Text: "{text_content}"
 
@@ -245,14 +280,18 @@ Criteria for YES:
 - They are seeking help with improving their spoken/conversational English
 - They express a need or desire to practice speaking with others
 - They are seeking English practice partners
+- They are asking for app recommendations for learning/practicing English
+- They are requesting tips, advice, or methods for learning English
+- They need help or guidance with their English learning journey
+- They are asking for resources, websites, or tools for English learning
 
 Criteria for NO:
 - They are giving advice or recommendations (not seeking)
-- They are discussing language theory or grammar rules
-- They are asking for translation or writing help only
+- They are discussing language theory or grammar rules purely academically
+- They are asking for translation or proofreading help only
 - They are promoting a service or product
 - They are engaged in general debate or opinion-sharing
-- They are only asking about reading or writing (not speaking/conversation)
+- They are only asking about specific homework or assignments
 
 Answer with ONLY "YES" or "NO", followed by a brief one-sentence explanation.
 
@@ -278,10 +317,100 @@ Format: YES/NO - [reason]"""
         # On error, allow the content through (fail open)
         return True, f"LLM verification error: {str(e)}"
 
+def classify_lead_type(text_content):
+    """
+    Classify the type of English learning lead based on content
+    Returns: lead_type (str)
+    """
+    text_lower = text_content.lower()
+    
+    # Define classification patterns (order matters - more specific first)
+    
+    # Looking for conversation/speaking practice partner
+    conversation_keywords = [
+        'conversation partner', 'speaking partner', 'practice partner',
+        'language exchange', 'speaking buddy', 'talk with', 'chat with',
+        'someone to talk to', 'someone to practice with', 'voice chat',
+        'practice speaking', 'speaking practice', 'conversation practice'
+    ]
+    
+    # Looking for apps/tools/platforms
+    app_keywords = [
+        'what app', 'which app', 'recommend app', 'best app',
+        'good app', 'apps for', 'app to', 'application for',
+        'software for', 'tool for', 'platform for', 'website for'
+    ]
+    
+    # Looking for community/group
+    community_keywords = [
+        'discord server', 'discord group', 'discord community',
+        'study group', 'practice group', 'learning community',
+        'speaking club', 'english community', 'online community',
+        'join a group', 'whatsapp group', 'telegram group'
+    ]
+    
+    # Looking for tips/advice/methods
+    tips_keywords = [
+        'tips for', 'advice for', 'how to learn', 'how to improve',
+        'best way to', 'methods for', 'techniques for', 'strategies for',
+        'how can i improve', 'how should i', 'what\'s the best way',
+        'recommendations for', 'suggestions for'
+    ]
+    
+    # General help/struggling
+    help_keywords = [
+        'need help', 'struggling with', 'having trouble',
+        'difficulty with', 'stuck', 'plateau', 'not improving',
+        'can\'t improve', 'need guidance', 'lost', 'confused'
+    ]
+    
+    # Confidence/fear issues
+    confidence_keywords = [
+        'afraid to speak', 'scared to speak', 'nervous about speaking',
+        'shy to speak', 'embarrassed', 'anxious about', 'lack confidence',
+        'not confident', 'fear of speaking', 'terrified'
+    ]
+    
+    # Test preparation
+    test_prep_keywords = [
+        'ielts', 'toefl', 'toeic', 'cambridge', 'cae', 'fce',
+        'test preparation', 'exam practice', 'test practice'
+    ]
+    
+    # Check each category
+    if any(keyword in text_lower for keyword in conversation_keywords):
+        return 'practice_conversation'
+    elif any(keyword in text_lower for keyword in app_keywords):
+        return 'looking_for_app'
+    elif any(keyword in text_lower for keyword in community_keywords):
+        return 'seeking_community'
+    elif any(keyword in text_lower for keyword in confidence_keywords):
+        return 'confidence_issues'
+    elif any(keyword in text_lower for keyword in test_prep_keywords):
+        return 'test_preparation'
+    elif any(keyword in text_lower for keyword in tips_keywords):
+        return 'seeking_tips'
+    elif any(keyword in text_lower for keyword in help_keywords):
+        return 'general_help'
+    else:
+        return 'general_learning'
+
 # ==== RESPONSE TEMPLATES ====
 RESPONSE_TEMPLATES = {
     "speaking_practice": f"""
 Hey 👋 saw your post about practicing spoken English! We're building an app to do exactly that and we'd love for you to join our friendly discord community to help each other: {DISCORD_INVITE_LINK}
+""",
+    
+    "looking_for_app": f"""
+Hey 👋 saw your question about English learning apps! We're building an app for exactly that, and in the meantime we have a friendly discord community where learners help each other practice. Would love for you to join: {DISCORD_INVITE_LINK}
+""",
+    
+    "seeking_community": f"""
+Hey 👋 saw you're looking for an English learning community! We have a friendly discord server where English learners practice together and support each other. Would love for you to join us: {DISCORD_INVITE_LINK}
+""",
+    
+    "seeking_tips": f"""
+Hey 👋 saw your question about improving English! We're building a community of English learners who share tips and practice together on discord. Would love for you to join and get advice from others: {DISCORD_INVITE_LINK}
 """,
     
     "learning_support": f"""
@@ -293,14 +422,38 @@ Hey 👋 saw your post! We're building a friendly English learning community on 
 """
 }
 
-def get_response_template(text_content):
-    """Choose appropriate response template based on content"""
+def get_response_template(text_content, lead_type=None):
+    """Choose appropriate response template based on content and lead type"""
+    # If lead_type is provided, use it for more accurate matching
+    if lead_type:
+        if lead_type == 'practice_conversation':
+            return RESPONSE_TEMPLATES["speaking_practice"]
+        elif lead_type == 'looking_for_app':
+            return RESPONSE_TEMPLATES["looking_for_app"]
+        elif lead_type == 'seeking_community':
+            return RESPONSE_TEMPLATES["seeking_community"]
+        elif lead_type == 'seeking_tips':
+            return RESPONSE_TEMPLATES["seeking_tips"]
+        elif lead_type in ['confidence_issues', 'general_help']:
+            return RESPONSE_TEMPLATES["learning_support"]
+    
+    # Fallback to keyword-based matching
+    text_lower = text_content.lower()
     speaking_keywords = ['speaking', 'conversation', 'talk', 'practice speaking', 'oral', 'pronunciation']
+    app_keywords = ['app', 'application', 'software', 'tool', 'platform', 'website']
+    community_keywords = ['discord', 'community', 'group', 'club']
+    tips_keywords = ['tips', 'advice', 'how to', 'best way', 'methods']
     support_keywords = ['struggling', 'difficult', 'hard', 'frustrated', 'give up', 'stuck', 'plateau']
     
-    if any(keyword in text_content.lower() for keyword in speaking_keywords):
+    if any(keyword in text_lower for keyword in speaking_keywords):
         return RESPONSE_TEMPLATES["speaking_practice"]
-    elif any(keyword in text_content.lower() for keyword in support_keywords):
+    elif any(keyword in text_lower for keyword in app_keywords):
+        return RESPONSE_TEMPLATES["looking_for_app"]
+    elif any(keyword in text_lower for keyword in community_keywords):
+        return RESPONSE_TEMPLATES["seeking_community"]
+    elif any(keyword in text_lower for keyword in tips_keywords):
+        return RESPONSE_TEMPLATES["seeking_tips"]
+    elif any(keyword in text_lower for keyword in support_keywords):
         return RESPONSE_TEMPLATES["learning_support"]
     else:
         return RESPONSE_TEMPLATES["general_invite"]
@@ -388,7 +541,7 @@ def cleanup_memory():
             print(f"⚠️ Error during memory cleanup: {e}")
 
 # ==== RESPONSE FUNCTIONS ====
-def respond_to_content(reddit_instance, content, content_type, text_content):
+def respond_to_content(reddit_instance, content, content_type, text_content, lead_type=None):
     """Respond to relevant content (comment or DM)"""
     try:
         global replies_sent_count, dms_sent_count, errors_responding_count
@@ -398,7 +551,7 @@ def respond_to_content(reddit_instance, content, content_type, text_content):
             print(f"⏰ Skipping response to u/{username} (cooldown active)")
             return False
             
-        response_text = get_response_template(text_content)
+        response_text = get_response_template(text_content, lead_type)
         
         if AUTO_RESPOND and content_type == 'post':
             # Reply to post
@@ -673,7 +826,7 @@ def process_content(content, content_type):
                 'permalink': f"https://www.reddit.com{content.permalink}"
             })
         
-        # First pass: Basic keyword filtering - ONLY for people seeking practice
+        # First pass: Basic keyword filtering - for people seeking practice, apps, tips, or help
         practice_seeking_keywords = [
             # Direct practice requests (first person)
             'i need', 'i want', 'i am looking', 'i\'m looking', 'looking for', 'need someone',
@@ -694,7 +847,21 @@ def process_content(content, content_type):
             
             # Confidence/fear related to speaking
             'afraid to speak', 'scared to speak', 'nervous about speaking', 'shy to speak',
-            'confidence in speaking', 'embarrassed about', 'anxious about speaking'
+            'confidence in speaking', 'embarrassed about', 'anxious about speaking',
+            
+            # App and resource seeking
+            'what app', 'which app', 'recommend app', 'best app', 'good app', 'apps for',
+            'app to learn', 'app to practice', 'website for', 'platform for', 'tool for',
+            'online resource', 'free resource', 'learning resource',
+            
+            # Tips and advice seeking
+            'tips for', 'advice for', 'how to learn', 'how to improve', 'how can i improve',
+            'best way to learn', 'best way to improve', 'methods for', 'techniques for',
+            'how should i learn', 'what\'s the best way', 'recommendations for', 'suggestions for',
+            
+            # General help and struggling
+            'need help', 'need guidance', 'struggling with', 'having trouble', 'difficulty',
+            'stuck', 'plateau', 'not improving', 'can\'t improve', 'help me'
         ]
         
         has_practice_keywords = any(keyword in text_content for keyword in practice_seeking_keywords)
@@ -706,7 +873,7 @@ def process_content(content, content_type):
             filtered_data = base_data.copy()
             filtered_data.update({
                 'filter_reason': 'no_practice_keywords',
-                'filter_description': 'Content does not contain practice-seeking keywords'
+                'filter_description': 'Content does not contain practice/app/tips-seeking keywords'
             })
             save_filtered_content_to_json(filtered_data)
             filtered_no_practice_keywords_count += 1
@@ -810,11 +977,15 @@ def process_content(content, content_type):
         # Track as passed
         track_filtering_stat(subreddit_name, 'passed', content_type, display_text)
         
+        # Classify the type of lead
+        lead_type = classify_lead_type(text_content)
+        
         # Record this user as an identified lead to prevent duplicates
         record_identified_lead(username)
         
         lead_data = base_data.copy()
         lead_data.update({
+            'lead_type': lead_type,
             'responded': False,
             'dm_sent': False,
             'email_sent': False,
@@ -825,6 +996,7 @@ def process_content(content, content_type):
         print("\n===========================")
         print(f"🎯 ENGLISH LEARNING LEAD FOUND!")
         print(f"📌 Content Type: {content_type.upper()}")
+        print(f"📌 Lead Type: {lead_type.upper()}")
         print(f"📌 Subreddit: r/{content.subreddit.display_name}")
         print(f"👤 Author: u/{content.author}")
         if content_type == 'post':
@@ -842,7 +1014,7 @@ def process_content(content, content_type):
         
         # Try to respond if enabled
         if (AUTO_RESPOND or SEND_DMS) and reddit_write:
-            responded = respond_to_content(reddit_write, content, content_type, text_content)
+            responded = respond_to_content(reddit_write, content, content_type, text_content, lead_type)
             lead_data['responded'] = responded
             if responded:
                 print("✅ Response sent!")

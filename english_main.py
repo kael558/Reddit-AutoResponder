@@ -101,6 +101,11 @@ SAVE_FILTERED_CONTENT = False  # Set to True to save filtered content to json
 identified_leads = {}  # {username: first_identified_timestamp}
 IDENTIFIED_LEADS_FILE = "identified_leads.json"
 
+# Track filtering statistics by subreddit
+filtering_stats = {}  # {subreddit: {stage: {count: int, samples: []}}}
+FILTERING_STATS_FILE_PREFIX = "filtering_stats"
+current_stats_date = datetime.now().strftime("%Y-%m-%d")  # Track which day we're collecting stats for
+
 # ==== INITIALIZE COHERE CLIENT ====
 cohere_client = None
 if COHERE_API_KEY:
@@ -358,6 +363,9 @@ def cleanup_memory():
             
             print("🧹 Running memory cleanup...")
             
+            # Check if we need to reset daily stats
+            check_and_reset_daily_stats()
+            
             # Clean up old interactions (older than cooldown period + 1 hour buffer)
             cutoff_time = datetime.now() - timedelta(hours=RESPONSE_COOLDOWN_HOURS + 1)
             old_count = len(recent_interactions)
@@ -483,6 +491,80 @@ def save_filtered_content_to_json(filtered_data):
     except Exception as e:
         print(f"⚠️ Error saving filtered content: {e}")
 
+def track_filtering_stat(subreddit, stage, content_type, sample_text):
+    """
+    Track filtering statistics by subreddit and stage
+    Keeps up to 3 samples per stage per subreddit
+    """
+    global filtering_stats
+    
+    if subreddit not in filtering_stats:
+        filtering_stats[subreddit] = {
+            'total_posts': 0,
+            'total_comments': 0,
+            'no_practice_keywords': {'posts': 0, 'comments': 0, 'samples': []},
+            'negative_keywords': {'posts': 0, 'comments': 0, 'samples': []},
+            'no_seeking_language': {'posts': 0, 'comments': 0, 'samples': []},
+            'low_similarity': {'posts': 0, 'comments': 0, 'samples': []},
+            'llm_verification_failed': {'posts': 0, 'comments': 0, 'samples': []},
+            'passed': {'posts': 0, 'comments': 0}
+        }
+    
+    # Track total counts
+    if stage == 'total':
+        if content_type == 'post':
+            filtering_stats[subreddit]['total_posts'] += 1
+        else:
+            filtering_stats[subreddit]['total_comments'] += 1
+        return
+    
+    # Track stage-specific filtering
+    if stage in filtering_stats[subreddit]:
+        if content_type == 'post':
+            filtering_stats[subreddit][stage]['posts'] += 1
+        else:
+            filtering_stats[subreddit][stage]['comments'] += 1
+        
+        # Keep up to 3 samples per stage
+        if len(filtering_stats[subreddit][stage]['samples']) < 3:
+            filtering_stats[subreddit][stage]['samples'].append({
+                'type': content_type,
+                'text': sample_text[:300]  # Limit to 300 chars
+            })
+
+def save_filtering_stats():
+    """Save filtering statistics to a daily JSON file"""
+    try:
+        today = datetime.now().strftime("%Y-%m-%d")
+        filename = f"{FILTERING_STATS_FILE_PREFIX}_{today}.json"
+        
+        with open(filename, 'w', encoding='utf-8') as f:
+            json.dump(filtering_stats, f, indent=2, ensure_ascii=False)
+        
+        print(f"📊 Filtering statistics saved to {filename}")
+        
+    except Exception as e:
+        print(f"⚠️ Error saving filtering stats: {e}")
+
+def check_and_reset_daily_stats():
+    """Check if we've crossed into a new day and reset stats if needed"""
+    global filtering_stats, current_stats_date
+    
+    today = datetime.now().strftime("%Y-%m-%d")
+    
+    if today != current_stats_date:
+        print(f"\n🔄 New day detected ({current_stats_date} → {today})")
+        print(f"📊 Saving final stats for {current_stats_date}...")
+        
+        # Save the old day's stats one final time
+        save_filtering_stats()
+        
+        # Reset stats for the new day
+        filtering_stats = {}
+        current_stats_date = today
+        
+        print(f"✅ Statistics reset for new day: {today}\n")
+
 # ==== LOAD IDENTIFIED LEADS ====
 load_identified_leads()
 
@@ -541,6 +623,10 @@ def process_content(content, content_type):
         # Skip deleted/removed content
         if content.author is None or content.author in ['AutoModerator']:
             return
+        
+        # Track total content by subreddit
+        subreddit_name = content.subreddit.display_name
+        track_filtering_stat(subreddit_name, 'total', content_type, '')
         
         # Check if user has already been identified as a lead
         username = str(content.author)
@@ -614,6 +700,8 @@ def process_content(content, content_type):
         has_practice_keywords = any(keyword in text_content for keyword in practice_seeking_keywords)
         
         if not has_practice_keywords:
+            # Track filtering stat
+            track_filtering_stat(subreddit_name, 'no_practice_keywords', content_type, display_text)
             # Save to filtered content
             filtered_data = base_data.copy()
             filtered_data.update({
@@ -650,6 +738,8 @@ def process_content(content, content_type):
         matching_negative_keywords = [neg_keyword for neg_keyword in negative_keywords if neg_keyword in text_content]
         if matching_negative_keywords:
             print(f"🚫 Filtered out due to negative keywords: {display_text[:100]}...")
+            # Track filtering stat
+            track_filtering_stat(subreddit_name, 'negative_keywords', content_type, display_text)
             filtered_data = base_data.copy()
             filtered_data.update({
                 'filter_reason': 'negative_keywords',
@@ -671,6 +761,8 @@ def process_content(content, content_type):
         
         if not has_seeking_language:
             print(f"🚫 Filtered out - no seeking language: {display_text[:100]}...")
+            # Track filtering stat
+            track_filtering_stat(subreddit_name, 'no_seeking_language', content_type, display_text)
             filtered_data = base_data.copy()
             filtered_data.update({
                 'filter_reason': 'no_seeking_language',
@@ -683,6 +775,8 @@ def process_content(content, content_type):
         # Embedding-based filtering
         if not is_relevant:
             print(f"🚫 Filtered out - low similarity score ({similarity_score:.2f}): {display_text[:100]}...")
+            # Track filtering stat
+            track_filtering_stat(subreddit_name, 'low_similarity', content_type, display_text)
             filtered_data = base_data.copy()
             filtered_data.update({
                 'filter_reason': 'low_similarity',
@@ -698,6 +792,8 @@ def process_content(content, content_type):
         if not llm_verified:
             print(f"🚫 Filtered out - LLM verification failed: {display_text[:100]}...")
             print(f"   LLM Reasoning: {llm_reasoning}")
+            # Track filtering stat
+            track_filtering_stat(subreddit_name, 'llm_verification_failed', content_type, display_text)
             filtered_data = base_data.copy()
             filtered_data.update({
                 'filter_reason': 'llm_verification_failed',
@@ -711,6 +807,9 @@ def process_content(content, content_type):
         print(f"   ✅ LLM Verified: {llm_reasoning}")
 
         # Content passed all filters - it's a valid lead
+        # Track as passed
+        track_filtering_stat(subreddit_name, 'passed', content_type, display_text)
+        
         # Record this user as an identified lead to prevent duplicates
         record_identified_lead(username)
         
@@ -800,6 +899,9 @@ try:
     # Process content from queue
     while True:
         try:
+            # Check if we need to reset stats for a new day
+            check_and_reset_daily_stats()
+            
             content_type, content = content_queue.get(timeout=1)
             process_content(content, content_type)
             content_queue.task_done()
@@ -807,6 +909,7 @@ try:
             # Periodic garbage collection every 100 items
             if processed_count % 100 == 0:
                 gc.collect()
+                save_filtering_stats()  # Save stats periodically
                 print_progress_summary("Every 100")
             
             time.sleep(2)  # Rate limiting (slightly slower for politeness)

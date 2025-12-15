@@ -11,6 +11,9 @@ Example crontab entry (runs at 11:59 PM daily):
 import os
 import json
 import glob
+import csv
+import io
+import base64
 from datetime import datetime
 from dotenv import load_dotenv
 import requests
@@ -57,7 +60,202 @@ def get_response_template(text_content):
     else:
         return RESPONSE_TEMPLATES["general_invite"]
 
-def generate_digest_email(leads, digest_date_str=None):
+def generate_csv_from_leads(leads):
+    """Generate CSV file content from leads data"""
+    output = io.StringIO()
+    writer = csv.writer(output)
+    
+    # Write header
+    writer.writerow(['name', 'content', 'profile_link'])
+    
+    # Write each lead
+    for lead in leads:
+        name = lead.get('author', 'Unknown')
+        profile_link = f"https://www.reddit.com/user/{name}"
+        
+        # Get content based on type
+        if lead.get('content_type') == 'post':
+            title = lead.get('title', '')
+            body = lead.get('selftext', '')
+            content = f"{title}\n\n{body}" if body else title
+        else:  # comment
+            content = lead.get('comment', '')
+        
+        writer.writerow([name, content, profile_link])
+    
+    return output.getvalue()
+
+def load_filtering_stats(date_str):
+    """Load filtering statistics for the given date"""
+    try:
+        filename = f"filtering_stats_{date_str}.json"
+        if os.path.exists(filename):
+            with open(filename, 'r', encoding='utf-8') as f:
+                return json.load(f)
+        return {}
+    except Exception as e:
+        print(f"⚠️ Error loading filtering stats: {e}")
+        return {}
+
+def generate_filtering_report_html(stats):
+    """Generate HTML report from filtering statistics"""
+    if not stats:
+        return '<p style="text-align: center; color: #666;">No filtering statistics available for this period.</p>'
+    
+    report_html = ""
+    
+    for subreddit, data in stats.items():
+        total_posts = data.get('total_posts', 0)
+        total_comments = data.get('total_comments', 0)
+        total_content = total_posts + total_comments
+        
+        if total_content == 0:
+            continue
+        
+        # Calculate remaining at each stage
+        no_practice = data.get('no_practice_keywords', {})
+        negative = data.get('negative_keywords', {})
+        no_seeking = data.get('no_seeking_language', {})
+        low_sim = data.get('low_similarity', {})
+        llm_failed = data.get('llm_verification_failed', {})
+        passed = data.get('passed', {})
+        
+        # Calculate cumulative filtering
+        after_practice_posts = total_posts - no_practice.get('posts', 0)
+        after_practice_comments = total_comments - no_practice.get('comments', 0)
+        after_practice_total = after_practice_posts + after_practice_comments
+        after_practice_pct = (after_practice_total / total_content * 100) if total_content > 0 else 0
+        
+        after_negative_posts = after_practice_posts - negative.get('posts', 0)
+        after_negative_comments = after_practice_comments - negative.get('comments', 0)
+        after_negative_total = after_negative_posts + after_negative_comments
+        after_negative_pct = (after_negative_total / total_content * 100) if total_content > 0 else 0
+        
+        after_seeking_posts = after_negative_posts - no_seeking.get('posts', 0)
+        after_seeking_comments = after_negative_comments - no_seeking.get('comments', 0)
+        after_seeking_total = after_seeking_posts + after_seeking_comments
+        after_seeking_pct = (after_seeking_total / total_content * 100) if total_content > 0 else 0
+        
+        after_similarity_posts = after_seeking_posts - low_sim.get('posts', 0)
+        after_similarity_comments = after_seeking_comments - low_sim.get('comments', 0)
+        after_similarity_total = after_similarity_posts + after_similarity_comments
+        after_similarity_pct = (after_similarity_total / total_content * 100) if total_content > 0 else 0
+        
+        final_posts = passed.get('posts', 0)
+        final_comments = passed.get('comments', 0)
+        final_total = final_posts + final_comments
+        final_pct = (final_total / total_content * 100) if total_content > 0 else 0
+        
+        # Build subreddit report
+        report_html += f"""
+        <div style="background-color: white; padding: 25px; margin: 20px 0; border-radius: 8px; box-shadow: 0 2px 4px rgba(0,0,0,0.1); border-left: 4px solid #ff4500;">
+            <h3 style="color: #ff4500; margin-top: 0; font-size: 20px;">r/{subreddit}</h3>
+            
+            <div style="background-color: #f0f8ff; padding: 15px; border-radius: 5px; margin: 15px 0;">
+                <p style="margin: 5px 0; font-weight: bold; font-size: 16px;">
+                    Starting: 100% ({total_posts} posts, {total_comments} comments)
+                </p>
+            </div>
+            
+            <div style="margin: 20px 0;">
+                <div style="background-color: #fff3cd; padding: 12px; border-left: 4px solid #ffc107; margin: 10px 0;">
+                    <p style="margin: 0; font-weight: bold;">
+                        ↓ After Practice Keywords Filter: {after_practice_pct:.1f}% ({after_practice_posts} posts, {after_practice_comments} comments)
+                    </p>
+                </div>
+        """
+        
+        # Add samples for practice keywords filter
+        if no_practice.get('samples'):
+            report_html += '<div style="margin: 10px 0 10px 30px; font-size: 13px; color: #666;">'
+            report_html += '<p style="margin: 5px 0; font-style: italic;">Examples filtered:</p>'
+            for idx, sample in enumerate(no_practice['samples'][:3], 1):
+                sample_text = sample['text'].replace('\n', ' ')[:200]
+                report_html += f'<p style="margin: 3px 0; padding-left: 10px;">• [{sample["type"]}] {sample_text}...</p>'
+            report_html += '</div>'
+        
+        report_html += f"""
+                <div style="background-color: #ffe6e6; padding: 12px; border-left: 4px solid #dc3545; margin: 10px 0;">
+                    <p style="margin: 0; font-weight: bold;">
+                        ↓ After Negative Keywords Filter: {after_negative_pct:.1f}% ({after_negative_posts} posts, {after_negative_comments} comments)
+                    </p>
+                </div>
+        """
+        
+        # Add samples for negative keywords filter
+        if negative.get('samples'):
+            report_html += '<div style="margin: 10px 0 10px 30px; font-size: 13px; color: #666;">'
+            report_html += '<p style="margin: 5px 0; font-style: italic;">Examples filtered:</p>'
+            for idx, sample in enumerate(negative['samples'][:3], 1):
+                sample_text = sample['text'].replace('\n', ' ')[:200]
+                report_html += f'<p style="margin: 3px 0; padding-left: 10px;">• [{sample["type"]}] {sample_text}...</p>'
+            report_html += '</div>'
+        
+        report_html += f"""
+                <div style="background-color: #fff3e6; padding: 12px; border-left: 4px solid #fd7e14; margin: 10px 0;">
+                    <p style="margin: 0; font-weight: bold;">
+                        ↓ After Seeking Language Filter: {after_seeking_pct:.1f}% ({after_seeking_posts} posts, {after_seeking_comments} comments)
+                    </p>
+                </div>
+        """
+        
+        # Add samples for seeking language filter
+        if no_seeking.get('samples'):
+            report_html += '<div style="margin: 10px 0 10px 30px; font-size: 13px; color: #666;">'
+            report_html += '<p style="margin: 5px 0; font-style: italic;">Examples filtered:</p>'
+            for idx, sample in enumerate(no_seeking['samples'][:3], 1):
+                sample_text = sample['text'].replace('\n', ' ')[:200]
+                report_html += f'<p style="margin: 3px 0; padding-left: 10px;">• [{sample["type"]}] {sample_text}...</p>'
+            report_html += '</div>'
+        
+        report_html += f"""
+                <div style="background-color: #e6f3ff; padding: 12px; border-left: 4px solid #0d6efd; margin: 10px 0;">
+                    <p style="margin: 0; font-weight: bold;">
+                        ↓ After Similarity Filter: {after_similarity_pct:.1f}% ({after_similarity_posts} posts, {after_similarity_comments} comments)
+                    </p>
+                </div>
+        """
+        
+        # Add samples for similarity filter
+        if low_sim.get('samples'):
+            report_html += '<div style="margin: 10px 0 10px 30px; font-size: 13px; color: #666;">'
+            report_html += '<p style="margin: 5px 0; font-style: italic;">Examples filtered:</p>'
+            for idx, sample in enumerate(low_sim['samples'][:3], 1):
+                sample_text = sample['text'].replace('\n', ' ')[:200]
+                report_html += f'<p style="margin: 3px 0; padding-left: 10px;">• [{sample["type"]}] {sample_text}...</p>'
+            report_html += '</div>'
+        
+        report_html += f"""
+                <div style="background-color: #f0e6ff; padding: 12px; border-left: 4px solid #6f42c1; margin: 10px 0;">
+                    <p style="margin: 0; font-weight: bold;">
+                        ↓ After LLM Verification: {final_pct:.1f}% ({final_posts} posts, {final_comments} comments)
+                    </p>
+                </div>
+        """
+        
+        # Add samples for LLM verification filter
+        if llm_failed.get('samples'):
+            report_html += '<div style="margin: 10px 0 10px 30px; font-size: 13px; color: #666;">'
+            report_html += '<p style="margin: 5px 0; font-style: italic;">Examples filtered:</p>'
+            for idx, sample in enumerate(llm_failed['samples'][:3], 1):
+                sample_text = sample['text'].replace('\n', ' ')[:200]
+                report_html += f'<p style="margin: 3px 0; padding-left: 10px;">• [{sample["type"]}] {sample_text}...</p>'
+            report_html += '</div>'
+        
+        report_html += f"""
+            </div>
+            
+            <div style="background-color: #d4edda; padding: 15px; border-radius: 5px; margin: 15px 0; border: 2px solid #28a745;">
+                <p style="margin: 0; font-weight: bold; color: #155724; font-size: 16px;">
+                    ✅ Final Result: {final_total} leads included in report ({final_pct:.1f}% of original content)
+                </p>
+            </div>
+        </div>
+        """
+    
+    return report_html
+
+def generate_digest_email(leads, digest_date_str=None, filtering_stats=None):
     """Generate HTML email with all daily leads"""
     
     total_leads = len(leads)
@@ -145,6 +343,18 @@ def generate_digest_email(leads, digest_date_str=None):
         </div>
         """
     
+    # Generate filtering report HTML
+    filtering_report_html = ""
+    if filtering_stats:
+        filtering_report_html = f"""
+        <div style="background-color: white; padding: 30px; margin-top: 20px; border-radius: 10px; box-shadow: 0 4px 6px rgba(0,0,0,0.1);">
+            <h2 style="color: #1a73e8; margin-top: 0; text-align: center; font-size: 28px;">📈 Filtering Performance Report</h2>
+            <p style="text-align: center; color: #666; margin-bottom: 30px;">Analysis of content filtering by subreddit</p>
+            
+            {generate_filtering_report_html(filtering_stats)}
+        </div>
+        """
+    
     # Create complete HTML email
     html_content = f"""
 <html>
@@ -166,8 +376,11 @@ def generate_digest_email(leads, digest_date_str=None):
             {lead_cards_html if total_leads > 0 else '<p style="text-align: center; color: #666; font-size: 18px; padding: 40px 0;">No leads were collected today.</p>'}
         </div>
         
+        {filtering_report_html}
+        
         <div style="text-align: center; margin-top: 30px; padding: 20px; color: #666; font-size: 14px;">
             <p>This is an automated daily digest from your Reddit lead monitoring bot.</p>
+            <p>📎 CSV file attached with lead details for easy importing.</p>
             <p>Generated on {datetime.now().strftime('%Y-%m-%d at %H:%M:%S')}</p>
         </div>
     </div>
@@ -230,15 +443,21 @@ Generated on {datetime.now().strftime('%Y-%m-%d at %H:%M:%S')}
     
     return html_content, text_content
 
-def send_digest_email(leads, date_str):
-    """Send the daily digest email"""
+def send_digest_email(leads, date_str, filtering_stats=None):
+    """Send the daily digest email with CSV attachment"""
     if not EMAIL_ADDRESS or not SMTP2GO_API_KEY:
         print("⚠️ SMTP2GO not configured: missing EMAIL_ADDRESS or SMTP2GO_API_KEY")
         return False
     
     try:
         # Generate email content
-        html_content, text_content = generate_digest_email(leads, date_str)
+        html_content, text_content = generate_digest_email(leads, date_str, filtering_stats)
+        
+        # Generate CSV content
+        csv_content = generate_csv_from_leads(leads)
+        
+        # Encode CSV as base64 for attachment
+        csv_b64 = base64.b64encode(csv_content.encode('utf-8')).decode('utf-8')
         
         # Prepare recipients list (supports comma or semicolon separated)
         recipients = [r.strip() for r in NOTIFICATION_EMAIL.replace(';', ',').split(',') if r.strip()]
@@ -257,6 +476,13 @@ def send_digest_email(leads, date_str):
             "custom_headers": [
                 {"header": "Reply-To", "value": REPLY_TO}
             ],
+            "attachments": [
+                {
+                    "filename": f"leads_{date_str}.csv",
+                    "fileblob": csv_b64,
+                    "mimetype": "text/csv"
+                }
+            ]
         }
 
         headers = {
@@ -355,9 +581,16 @@ def main():
                         # Extract date from filename
                         old_date = old_file.replace('english_leads_', '').replace('.json', '')
                         
+                        # Load filtering stats for this old date
+                        old_filtering_stats = load_filtering_stats(old_date)
+                        
                         print(f"\n📧 Sending digest for {old_date} ({len(old_leads)} leads)...")
-                        if send_digest_email(old_leads, old_date):
+                        if send_digest_email(old_leads, old_date, old_filtering_stats):
                             archive_leads_file(old_file)
+                            # Archive old stats file if exists
+                            old_stats_file = f"filtering_stats_{old_date}.json"
+                            if os.path.exists(old_stats_file):
+                                archive_leads_file(old_stats_file)
                     except Exception as e:
                         print(f"⚠️ Error processing {old_file}: {e}")
             
@@ -370,10 +603,22 @@ def main():
         
         print(f"📊 Found {len(leads)} lead(s) for {target_date}")
         
+        # Load filtering statistics
+        filtering_stats = load_filtering_stats(target_date)
+        if filtering_stats:
+            print(f"📈 Loaded filtering statistics for {target_date}")
+        else:
+            print(f"ℹ️ No filtering statistics found for {target_date}")
+        
         # Send digest email
-        if send_digest_email(leads, target_date):
+        if send_digest_email(leads, target_date, filtering_stats):
             # Archive the leads file
             archive_leads_file(leads_file)
+            
+            # Archive the filtering stats file if it exists
+            stats_file = f"filtering_stats_{target_date}.json"
+            if os.path.exists(stats_file):
+                archive_leads_file(stats_file)
         else:
             print("⚠️ Failed to send digest email. Leads file will be kept for retry.")
         

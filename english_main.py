@@ -657,7 +657,7 @@ def track_filtering_stat(subreddit, stage, content_type, sample_text):
             'no_seeking_language': {'posts': 0, 'comments': 0, 'samples': []},
             'low_similarity': {'posts': 0, 'comments': 0, 'samples': []},
             'llm_verification_failed': {'posts': 0, 'comments': 0, 'samples': []},
-            'passed': {'posts': 0, 'comments': 0}
+            'passed': {'posts': 0, 'comments': 0, 'samples': []}
         }
     
     # Track total counts

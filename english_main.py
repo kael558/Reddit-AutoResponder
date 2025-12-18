@@ -591,29 +591,26 @@ def respond_to_content(reddit_instance, content, content_type, text_content, lea
 def save_lead_to_json(lead_data):
     """
     Save lead data to a daily JSON file
+    Raises exception if save fails so caller can handle it
     """
     today = datetime.now().strftime("%Y-%m-%d")
     filename = f"english_leads_{today}.json"
-    
-    try:
-        # Load existing data or create new list
-        if os.path.exists(filename):
-            with open(filename, 'r', encoding='utf-8') as f:
-                leads = json.load(f)
-        else:
-            leads = []
-        
-        # Add new lead
-        leads.append(lead_data)
-        
-        # Save back to file
-        with open(filename, 'w', encoding='utf-8') as f:
-            json.dump(leads, f, indent=2, ensure_ascii=False)
-        
-        print(f"💾 English lead saved to {filename}")
-        
-    except Exception as e:
-        print(f"⚠️ Error saving lead: {e}")
+
+    # Load existing data or create new list
+    if os.path.exists(filename):
+        with open(filename, 'r', encoding='utf-8') as f:
+            leads = json.load(f)
+    else:
+        leads = []
+
+    # Add new lead
+    leads.append(lead_data)
+
+    # Save back to file
+    with open(filename, 'w', encoding='utf-8') as f:
+        json.dump(leads, f, indent=2, ensure_ascii=False)
+
+    print(f"💾 English lead saved to {filename} (total: {len(leads)} leads)")
 
 def save_filtered_content_to_json(filtered_data):
     """
@@ -973,16 +970,12 @@ def process_content(content, content_type):
         print(f"🔍 Found potential English learning lead in {content_type}: {display_text}")
         print(f"   ✅ LLM Verified: {llm_reasoning}")
 
-        # Content passed all filters - it's a valid lead
-        # Track as passed
-        track_filtering_stat(subreddit_name, 'passed', content_type, display_text)
-        
         # Classify the type of lead
         lead_type = classify_lead_type(text_content)
-        
+
         # Record this user as an identified lead to prevent duplicates
         record_identified_lead(username)
-        
+
         lead_data = base_data.copy()
         lead_data.update({
             'lead_type': lead_type,
@@ -991,7 +984,7 @@ def process_content(content, content_type):
             'email_sent': False,
             'llm_verification': llm_reasoning
         })
-        
+
         # Display the lead
         print("\n===========================")
         print(f"🎯 ENGLISH LEARNING LEAD FOUND!")
@@ -1008,23 +1001,22 @@ def process_content(content, content_type):
         print(f"📊 Similarity Score: {similarity_score:.2f}")
         print(f"🎯 Best Matching Topic: {best_matching_topic}")
         print(f"📊 Reddit Score: {content.score}")
-        
-        # Note: Lead will be saved to english_leads_{today}.json below
-        # Email digest script reads directly from that file
-        
+
         # Try to respond if enabled
         if (AUTO_RESPOND or SEND_DMS) and reddit_write:
             responded = respond_to_content(reddit_write, content, content_type, text_content, lead_type)
             lead_data['responded'] = responded
             if responded:
                 print("✅ Response sent!")
-        
-        print("===========================\n")
-        
-        leads_found_count += 1
 
-        # Save to JSON
+        print("===========================\n")
+
+        # Save to JSON file
         save_lead_to_json(lead_data)
+
+        # Only track as "passed" and increment counter after successful save
+        track_filtering_stat(subreddit_name, 'passed', content_type, display_text)
+        leads_found_count += 1
         
     except Exception as e:
         print(f"⚠️ Error processing {content_type}: {e}")

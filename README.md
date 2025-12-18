@@ -81,6 +81,51 @@ Leads are saved as JSON with the following structure:
 - **Add more subreddits**: Update the `TARGET_SUBREDDITS` list
 - **Modify target topics**: Update the `TARGET_TOPICS` list for different filtering criteria
 
+## Testing
+
+### Test Lead Saving Functionality
+
+To verify that leads are being properly saved to JSON files after passing all filters:
+
+```bash
+python test_lead_saving.py
+```
+
+This test will:
+1. Create a simulated lead with all required fields
+2. Call the `save_lead_to_json()` function
+3. Verify the lead file was created/updated
+4. Check that the JSON is valid
+5. Confirm the lead was added with correct data
+6. Verify all required fields are present
+
+**Expected Output:**
+```
+🧪 Testing Lead Saving Functionality
+✅ save_lead_to_json() executed without errors
+✅ File english_leads_2025-XX-XX.json exists
+✅ File contains valid JSON
+✅ Lead count increased from X to Y
+✅ Lead data is correct
+✅ All required fields are present
+✅ ALL TESTS PASSED!
+```
+
+After the test completes, you'll be prompted to remove the test lead from the file.
+
+### Other Available Tests
+
+```bash
+# Test filtering logic
+python test_filtering.py
+
+# Test daily digest email features
+python test_digest_features.py
+
+# Test daily statistics reset
+python test_daily_reset.py
+```
+
 # Automatically reply
 
 # Automatically send DMs to web developers

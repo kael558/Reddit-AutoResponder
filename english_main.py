@@ -882,21 +882,22 @@ def process_content(content, content_type):
             'translate', 'translation service', 'homework help', 'essay writing service',
             'pay for', 'selling', 'buy my', 'crypto', 'bitcoin', 'investment',
             'spam', 'advertisement', 'promotion', 'affiliate', 'referral code',
-            
+
             # General discussion/debate (not seeking practice)
             'totally representative', 'isolated case', 'asshole', 'population',
             'heard something recently', 'generally due to', 'step back', 'forest for the trees',
             'in my opinion', 'i think that', 'personally i believe', 'from my experience',
-            'it depends on', 'there are many factors', 'it varies', 
-            
+            'it depends on', 'there are many factors', 'it varies',
+
             # Academic/theoretical discussions
             'research shows', 'studies indicate', 'according to', 'evidence suggests',
             'linguistically speaking', 'from a linguistic perspective', 'grammar rules',
             'language acquisition theory', 'second language acquisition',
-            
-            # Giving advice (not seeking)
-            'you should', 'i recommend', 'try this', 'what works for me',
-            'in my experience', 'i suggest', 'my advice would be'
+
+            # Giving advice (not seeking) - made more specific to avoid false positives
+            'you should', 'i recommend that', 'i would recommend', "i'd recommend",
+            'try this', 'what works for me', 'i suggest that', 'i would suggest',
+            "i'd suggest", 'my advice would be', 'my advice is'
         ]
         
         matching_negative_keywords = [neg_keyword for neg_keyword in negative_keywords if neg_keyword in text_content]

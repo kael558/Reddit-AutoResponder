@@ -29,50 +29,22 @@ NOTIFICATION_EMAIL = os.environ.get("NOTIFICATION_EMAIL", EMAIL_ADDRESS)
 SMTP2GO_API_URL = "https://api.smtp2go.com/v3/email/send"
 REPLY_TO = os.environ.get("REPLY_TO", EMAIL_ADDRESS)
 
-# ==== DISCORD COMMUNITY DETAILS ====
-DISCORD_INVITE_LINK = "https://discord.com/invite/yjaraMBuSG"
-COMMUNITY_NAME = "Practice Speaking English - Fluent Future"
-
-# ==== RESPONSE TEMPLATES ====
-RESPONSE_TEMPLATES = {
-    "speaking_practice": f"""
-Hey 👋 saw your post about practicing spoken English! We're building an app to do exactly that and we'd love for you to join our friendly discord community to help each other: {DISCORD_INVITE_LINK}
-""",
-    
-    "learning_support": f"""
-Hey 👋 saw your post about English learning! I'm in the same boat and we're building a community to help each other out. Would love for you to join our discord: {DISCORD_INVITE_LINK}
-""",
-    
-    "general_invite": f"""
-Hey 👋 saw your post! We're building a friendly English learning community on discord where we practice and help each other. Would love for you to join us: {DISCORD_INVITE_LINK}
-"""
-}
-
-def get_response_template(text_content):
-    """Choose appropriate response template based on content"""
-    speaking_keywords = ['speaking', 'conversation', 'talk', 'practice speaking', 'oral', 'pronunciation']
-    support_keywords = ['struggling', 'difficult', 'hard', 'frustrated', 'give up', 'stuck', 'plateau']
-    
-    if any(keyword in text_content.lower() for keyword in speaking_keywords):
-        return RESPONSE_TEMPLATES["speaking_practice"]
-    elif any(keyword in text_content.lower() for keyword in support_keywords):
-        return RESPONSE_TEMPLATES["learning_support"]
-    else:
-        return RESPONSE_TEMPLATES["general_invite"]
 
 def generate_csv_from_leads(leads):
     """Generate CSV file content from leads data"""
     output = io.StringIO()
     writer = csv.writer(output)
-    
+
     # Write header
-    writer.writerow(['name', 'content', 'profile_link'])
-    
+    writer.writerow(['name', 'content', 'profile_link', 'subreddit', 'post_link'])
+
     # Write each lead
     for lead in leads:
         name = lead.get('author', 'Unknown')
         profile_link = f"https://www.reddit.com/user/{name}"
-        
+        subreddit = lead.get('subreddit', 'Unknown')
+        post_link = lead.get('permalink', '')
+
         # Get content based on type
         if lead.get('content_type') == 'post':
             title = lead.get('title', '')
@@ -80,9 +52,9 @@ def generate_csv_from_leads(leads):
             content = f"{title}\n\n{body}" if body else title
         else:  # comment
             content = lead.get('comment', '')
-        
-        writer.writerow([name, content, profile_link])
-    
+
+        writer.writerow([name, content, profile_link, subreddit, post_link])
+
     return output.getvalue()
 
 def load_filtering_stats(date_str):
@@ -266,80 +238,13 @@ def generate_digest_email(leads, digest_date_str=None, filtering_stats=None):
     except Exception:
         display_date = datetime.now()
     
-    # Generate lead cards HTML
+    # Generate simple summary message (detailed info is in CSV)
     lead_cards_html = ""
-    for idx, lead in enumerate(leads, 1):
-        username = lead.get('author', 'Unknown')  # Changed from 'username' to 'author'
-        subreddit = lead.get('subreddit', 'Unknown')
-        content_type = lead.get('content_type', 'unknown')
-        similarity_score = lead.get('similarity_score', 0)
-        best_topic = lead.get('best_matching_topic', 'N/A')
-        reddit_score = lead.get('reddit_score', 0)
-        timestamp = lead.get('timestamp', 'N/A')
-        llm_verification = lead.get('llm_verification', 'N/A')
-        
-        # Generate URLs
-        reddit_profile_url = f"https://www.reddit.com/user/{username}"
-        content_url = lead.get('permalink', '')
-        
-        # Get content preview and generate recommended message
-        if content_type == 'post':
-            title = lead.get('title', 'N/A')
-            body = lead.get('selftext', '')
-            content_preview = f"""
-                <p><strong>Title:</strong> {title}</p>
-                <p><strong>Body:</strong> {body[:300]}{'...' if len(body) > 300 else ''}</p>
-            """
-            # Generate recommended message based on content
-            text_content = f"{title} {body}".lower()
-            recommended_message = get_response_template(text_content)
-        else:  # comment
-            comment = lead.get('comment', '')
-            content_preview = f"""
-                <p><strong>Comment:</strong> {comment[:300]}{'...' if len(comment) > 300 else ''}</p>
-            """
-            # Generate recommended message based on content
-            text_content = comment.lower()
-            recommended_message = get_response_template(text_content)
-        
-        lead_cards_html += f"""
-        <div style="background-color: white; padding: 20px; margin: 20px 0; border-radius: 5px; box-shadow: 0 2px 4px rgba(0,0,0,0.1); border-left: 4px solid #ff4500;">
-            <h3 style="color: #ff4500; margin-top: 0;">Lead #{idx} - u/{username}</h3>
-            
-            <div style="background-color: #f9f9f9; padding: 15px; margin: 10px 0; border-radius: 3px;">
-                <p style="margin: 5px 0;"><strong>Subreddit:</strong> r/{subreddit}</p>
-                <p style="margin: 5px 0;"><strong>Content Type:</strong> {content_type.upper()}</p>
-                <p style="margin: 5px 0;"><strong>Similarity Score:</strong> {similarity_score:.2f}</p>
-                <p style="margin: 5px 0;"><strong>Reddit Score:</strong> {reddit_score}</p>
-                <p style="margin: 5px 0;"><strong>Matching Topic:</strong> {best_topic}</p>
-                <p style="margin: 5px 0;"><strong>Time:</strong> {timestamp}</p>
-            </div>
-            
-            <div style="margin: 15px 0;">
-                <h4 style="color: #1a73e8; margin-bottom: 10px;">Content:</h4>
-                {content_preview}
-            </div>
-            
-            <div style="margin: 15px 0;">
-                <h4 style="color: #1a73e8; margin-bottom: 10px;">Recommended Message:</h4>
-                <div style="background-color: #f0f0f0; padding: 12px; border-left: 4px solid #1a73e8; white-space: pre-wrap; font-size: 14px;">
-{recommended_message}
-                </div>
-            </div>
-            
-            <div style="margin: 15px 0;">
-                <h4 style="color: #1a73e8; margin-bottom: 10px;">LLM Verification:</h4>
-                <p style="font-size: 14px; color: #666;">{llm_verification}</p>
-            </div>
-            
-            <div style="margin-top: 20px; text-align: center;">
-                <a href="{reddit_profile_url}" style="display: inline-block; padding: 10px 20px; background-color: #ff4500; color: white; text-decoration: none; border-radius: 5px; font-weight: bold; margin: 5px; font-size: 14px;">
-                    📧 DM User
-                </a>
-                <a href="{content_url}" style="display: inline-block; padding: 10px 20px; background-color: #1a73e8; color: white; text-decoration: none; border-radius: 5px; font-weight: bold; margin: 5px; font-size: 14px;">
-                    🔗 View Post
-                </a>
-            </div>
+    if total_leads > 0:
+        lead_cards_html = f"""
+        <div style="background-color: white; padding: 30px; margin: 20px 0; border-radius: 5px; box-shadow: 0 2px 4px rgba(0,0,0,0.1); border-left: 4px solid #ff4500; text-align: center;">
+            <p style="font-size: 16px; color: #666; margin: 0;">All lead details are available in the attached CSV file.</p>
+            <p style="font-size: 14px; color: #999; margin: 10px 0 0 0;">The CSV includes: name, content, profile link, subreddit, and post link for each lead.</p>
         </div>
         """
     
@@ -399,38 +304,11 @@ SUMMARY
 Total Leads Today: {total_leads}
 
 """
-    
+
     if total_leads > 0:
-        for idx, lead in enumerate(leads, 1):
-            username = lead.get('author', 'Unknown')  # Changed from 'username' to 'author'
-            subreddit = lead.get('subreddit', 'Unknown')
-            content_type = lead.get('content_type', 'unknown')
-            similarity_score = lead.get('similarity_score', 0)
-            reddit_profile_url = f"https://www.reddit.com/user/{username}"
-            content_url = lead.get('permalink', '')
-            
-            if content_type == 'post':
-                title = lead.get('title', 'N/A')
-                body = lead.get('selftext', '')[:200]
-                content_text = f"Title: {title}\nBody: {body}"
-            else:
-                comment = lead.get('comment', '')[:200]
-                content_text = f"Comment: {comment}"
-            
-            text_content += f"""
-{'='*60}
-LEAD #{idx}: u/{username}
-{'='*60}
-Subreddit: r/{subreddit}
-Content Type: {content_type.upper()}
-Similarity Score: {similarity_score:.2f}
-
-Content:
-{content_text}
-
-Links:
-- DM User: {reddit_profile_url}
-- View Post: {content_url}
+        text_content += """
+All lead details are available in the attached CSV file.
+The CSV includes: name, content, profile link, subreddit, and post link for each lead.
 
 """
     else:
